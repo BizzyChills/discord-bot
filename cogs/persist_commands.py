@@ -24,6 +24,33 @@ class PersistCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        """[event] Executes when the BotCog cog is ready
+        """
+        # global_utils.log("Bot cog loaded")
+
+    @app_commands.command(name="persist", description=global_utils.commands["persist"]["description"])
+    async def persist(self, interaction: discord.Interaction) -> None:
+        """[app command] Sends the persistent buttons view
+
+        Parameters
+        ----------
+        interaction : discord.Interaction
+            The interaction object that initiated the command
+        """
+        view = PersistentView()
+        await interaction.response.send_message(global_utils.style_text("HELP:", 'b'), view=view)
+
+
+class PersistentView(discord.ui.View):
+    """A view that handles the persistent buttons for the bot
+    """
+    # pylint: disable=unused-argument
+
+    def __init__(self, *_) -> None:
+        super().__init__(timeout=None)
+
         desc_hint = "(start typing the command to see its description)"
         self.commands_header = f"{global_utils.style_text('Commands', 'b')} {desc_hint}:"
 
@@ -58,27 +85,47 @@ class PersistCommands(commands.Cog):
                               f" - {global_utils.mention_slash('hello')}",
                               f" - {global_utils.mention_slash('trivia')}",]
 
-    @commands.Cog.listener()
-    async def on_ready(self) -> None:
-        """[event] Executes when the BotCog cog is ready
-        """
-        # global_utils.log("Bot cog loaded")
 
-    async def commands(self, interaction: discord.Interaction, list_type: str = "all") -> discord.WebhookMessage:
-        """Displays all bot commands
+        self.output_message = None
+
+    async def remove_old_output(self) -> None:
+        """Removes the old output message
+        """
+        if self.output_message is not None:
+            try:
+                await self.output_message.delete()
+            except discord.NotFound:
+                pass
+
+    @discord.ui.select(placeholder="Commands List", custom_id="commands_list_type", min_values=0,
+                       options=[discord.SelectOption(label="Minimum commands", value="basic"),
+                                discord.SelectOption(
+                                    label="User commands", value="user"),
+                                discord.SelectOption(
+                                    label="Admin commands", value="admin"),
+                                discord.SelectOption(
+                                    label="Minimum + Admin", value="basic_admin"),
+                                discord.SelectOption(
+                                    label="User + Admin", value="user_admin"),
+                                discord.SelectOption(label="All commands", value="all")])
+    async def commands_list_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
+        """[select menu] Sends the selected list of commands
 
         Parameters
         ----------
         interaction : discord.Interaction
-            The interaction object that initiated the command
-        list_type : str, optional
-            The type of command list to display, by default "user"
-
-        Returns
-        -------
-        discord.WebhookMessage
-            The message object that was sent
+            The interaction object from the select menu
+        select : discord.ui.Select
+            The select menu object that was used
         """
+        await self.remove_old_output()
+
+        if len(select.values) == 0:
+            await interaction.response.defer()
+            return
+
+        list_type = select.values[0]
+
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         user_commands = self.basic_commands + self.misc_commands
@@ -99,17 +146,144 @@ class PersistCommands(commands.Cog):
                     output += self.bizzy_commands
             case "user_admin":
                 output = user_admin_commands
-            case "all":
-                output = all_commands
             case _:
                 output = all_commands
 
         embed = discord.Embed(title=self.commands_header, description='\n'.join(
             output), color=discord.Color.blurple())
 
-        return await interaction.followup.send(embed=embed, ephemeral=True, silent=True)
-        # test_output = '\n'.join(output)
-        # return await interaction.followup.send(f"{self.commands_header}\n{test_output}", ephemeral=True)
+        self.output_message = await interaction.followup.send(embed=embed, ephemeral=True, silent=True)
+
+    @discord.ui.button(custom_id="schedule_button", label="Schedule", row=1,
+                       style=discord.ButtonStyle.primary,  emoji="📅")
+    async def schedule_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
+        """[button] Sends the premier schedule for the current server
+
+        Parameters
+        ----------
+        interaction : discord.Object
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await self.remove_old_output()
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        guild = interaction.guild
+        events = guild.scheduled_events
+
+        event_header = f"{global_utils.style_text('Upcoming Premier Events:', 'b')}"
+        practice_header = f"\n\n{global_utils.style_text('Upcoming Premier Practices:', 'b')}"
+        event_message = []
+        practice_message = []
+
+        for event in events:
+            map_name = event.description
+
+            if "premier practice" in event.name.lower():
+                practice_message.append(
+                    f"{global_utils.discord_local_time(event.start_time, with_date=True)}", event.start_time, map_name)
+            elif "premier" in event.name.lower():
+                event_message.append(
+                    f"{global_utils.discord_local_time(event.start_time, with_date=True)}", event.start_time, map_name)
+
+        if not event_message:
+            event_message = f"{global_utils.style_text('No premier events scheduled', 'b')}"
+        else:
+            event_message = self.format_schedule(event_message, event_header)
+
+        if not practice_message:
+            practice_message = f"\n\n{global_utils.style_text('No premier practices scheduled', 'b')}"
+        else:
+            practice_message = self.format_schedule(
+                practice_message, practice_header)
+
+        message = event_message + practice_message
+
+        header = f"{global_utils.style_text('Premier Schedule:', 'b')}"
+
+        embed = discord.Embed(
+            title=header, description=message, color=discord.Color.blurple())
+
+        self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(custom_id="map_pool_button", label="Map Pool", row=1,
+                       style=discord.ButtonStyle.primary, emoji="🗺️")
+    async def map_pool_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
+        """[button] Sends the current map pool for the server
+
+        Parameters
+        ----------
+        interaction : discord.Object
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await self.remove_old_output()
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        map_list = '\n- '.join([global_utils.style_text(
+            m.title(), 'i') for m in global_utils.map_pool])
+        embed = discord.Embed(
+            title="Map Pool", description=f"- {map_list}", color=discord.Color.blurple())
+        self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(custom_id="map_weights_button", label="Map Weights", row=2,
+                       style=discord.ButtonStyle.primary,  emoji="📊")
+    async def map_weights_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
+        """[button] Sends the current map weights for the server
+
+        Parameters
+        ----------
+        interaction : discord.Object
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await self.remove_old_output()
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        output = ""
+
+        for map_name in global_utils.map_pool:
+            map_display_name = global_utils.style_text(map_name.title(), 'i')
+            weight = global_utils.style_text(
+                global_utils.map_weights[map_name], 'b')
+
+            output += f'- {map_display_name}: {weight}\n'
+
+        if output == "":
+            output = "No weights to show for maps in the map pool."
+
+        embed = discord.Embed(
+            title="Map Weights", description=output, color=discord.Color.blurple())
+
+        self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+    @discord.ui.button(custom_id="vote_map_button", label="Map Voting", row=2,
+                       style=discord.ButtonStyle.primary, emoji="🗳️")
+    async def vote_map_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
+        """[button] Allows the user to mark their map preferences
+
+        Parameters
+        ----------
+        interaction : discord.Object
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await self.remove_old_output()
+
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        view = VotingButtons(
+            timeout=None, interaction=interaction)
+        await view.respond()
+
+        self.output_message = None
 
     def format_schedule(self, schedule: list[tuple[str, datetime, str]], header: str = None) -> str:
         """Formats the schedule for display in Discord
@@ -146,260 +320,6 @@ class PersistCommands(commands.Cog):
             output += f"{subheader}\n{event_displays}\n"
 
         return f"{header}\n{output}" if header else output
-
-    async def schedule(self, interaction: discord.Interaction) -> discord.WebhookMessage:
-        """[app command] Displays the premier schedule from server events
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-        """
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        guild = interaction.guild
-        events = guild.scheduled_events
-
-        event_header = f"{global_utils.style_text('Upcoming Premier Events:', 'b')}"
-        practice_header = f"\n\n{global_utils.style_text('Upcoming Premier Practices:', 'b')}"
-        event_message = []
-        practice_message = []
-
-        for event in events:
-            map_name = event.description if "playoffs" not in event.name.lower(
-            ) else "Playoffs"
-
-            if "premier practice" in event.name.lower():
-                practice_message.append(
-                    f"{global_utils.discord_local_time(event.start_time, with_date=True)}", event.start_time, map_name)
-            elif "premier" in event.name.lower():
-                event_message.append(
-                    f"{global_utils.discord_local_time(event.start_time, with_date=True)}", event.start_time, map_name)
-
-        if not event_message:
-            event_message = f"{global_utils.style_text('No premier events scheduled', 'b')}"
-        else:
-            event_message = self.format_schedule(event_message, event_header)
-
-        if not practice_message:
-            practice_message = f"\n\n{global_utils.style_text('No premier practices scheduled', 'b')}"
-        else:
-            practice_message = self.format_schedule(
-                practice_message, practice_header)
-
-        message = event_message + practice_message
-
-        header = f"{global_utils.style_text('Premier Schedule:', 'b')}"
-
-        embed = discord.Embed(
-            title=header, description=message, color=discord.Color.blurple())
-
-        return await interaction.followup.send(embed=embed, ephemeral=True)
-
-    async def map_pool(self, interaction: discord.Interaction) -> discord.WebhookMessage:
-        """[app command] Displays the current map pool for the server
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-        """
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        map_list = '\n- '.join([global_utils.style_text(
-            m.title(), 'i') for m in global_utils.map_pool])
-        embed = discord.Embed(
-            title="Map Pool", description=f"- {map_list}", color=discord.Color.blurple())
-        return await interaction.followup.send(embed=embed, ephemeral=True)
-
-    async def map_weights(self, interaction: discord.Interaction) -> discord.WebhookMessage:
-        """[app command] Displays the current map weights for the server
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-        """
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        output = ""
-
-        global_utils.map_weights = dict(sorted(global_utils.map_weights.items(
-        ), key=lambda item: item[1], reverse=True))  # sort the weights in descending order
-
-        for map_name in global_utils.map_weights.keys():
-            if map_name not in global_utils.map_pool:
-                continue
-
-            map_display_name = global_utils.style_text(map_name.title(), 'i')
-            weight = global_utils.style_text(
-                global_utils.map_weights[map_name], 'b')
-
-            output += f'- {map_display_name}: {weight}\n'
-
-        if output == "":
-            output = "No weights to show for maps in the map pool."
-
-        embed = discord.Embed(
-            title="Map Weights", description=output, color=discord.Color.blurple())
-
-        return await interaction.followup.send(embed=embed, ephemeral=True)
-
-    async def vote_map(self, interaction: discord.Interaction) -> None:
-        """Starts the map voting process
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-
-        Returns
-        -------
-        discord.WebhookMessage
-            The message object that was sent
-        """
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        view = VotingButtons(
-            timeout=None, interaction=interaction)
-        await view.respond()
-
-    @app_commands.command(name="persist", description=global_utils.commands["persist"]["description"])
-    async def persist(self, interaction: discord.Interaction) -> None:
-        """[app command] Sends the persistent buttons view
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-        """
-        view = PersistentView(cog=self)
-        await interaction.response.send_message(global_utils.style_text("HELP:", 'b'), view=view)
-
-
-class PersistentView(discord.ui.View):
-    """A view that handles the persistent buttons for the bot
-
-        Parameters
-        ----------
-        timeout : float | None, optional
-            The number of seconds to listen for an interaction before timing out, by default None (no timeout)
-        cog : BotCog
-            The BotCog instance that is using the buttons
-    """
-    # pylint: disable=unused-argument
-
-    def __init__(self, *, cog: PersistCommands) -> None:
-        super().__init__(timeout=None)
-        self.callbacks = {"commands": cog.commands,
-                          "schedule": cog.schedule,
-                          "map_weights": cog.map_weights,
-                          "vote_map": cog.vote_map,
-                          "map_pool": cog.map_pool}
-        self.output_message = None
-
-    async def remove_old_output(self) -> None:
-        """Removes the old output message
-        """
-        if self.output_message is not None:
-            try:
-                await self.output_message.delete()
-            except discord.NotFound:
-                pass
-
-    @discord.ui.select(placeholder="Commands List", custom_id="commands_list_type", min_values=0,
-                       options=[discord.SelectOption(label="Minimum commands", value="basic"),
-                                discord.SelectOption(
-                                    label="User commands", value="user"),
-                                discord.SelectOption(
-                                    label="Admin commands", value="admin"),
-                                discord.SelectOption(
-                                    label="Minimum + Admin", value="basic_admin"),
-                                discord.SelectOption(
-                                    label="User + Admin", value="user_admin"),
-                                discord.SelectOption(label="All commands", value="all")])
-    async def commands_list_button(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
-        """[select menu] Sends the selected list of commands
-
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object from the select menu
-        select : discord.ui.Select
-            The select menu object that was used
-        """
-        await self.remove_old_output()
-
-        if len(select.values) == 0:
-            await interaction.response.defer()
-            return
-
-        selected = select.values[0]
-        self.output_message = await self.callbacks["commands"](interaction, list_type=selected)
-
-    @discord.ui.button(custom_id="schedule_button", label="Schedule", row=1,
-                       style=discord.ButtonStyle.primary,  emoji="📅")
-    async def schedule_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
-        """[button] Sends the premier schedule for the current server
-
-        Parameters
-        ----------
-        interaction : discord.Object
-            The interaction object from the button click
-        button : discord.ui.Button
-            The button object that was clicked
-        """
-        await self.remove_old_output()
-
-        self.output_message = await self.callbacks["schedule"](interaction)
-
-    @discord.ui.button(custom_id="map_pool_button", label="Map Pool", row=1,
-                       style=discord.ButtonStyle.primary, emoji="🗺️")
-    async def map_pool_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
-        """[button] Sends the current map pool for the server
-
-        Parameters
-        ----------
-        interaction : discord.Object
-            The interaction object from the button click
-        button : discord.ui.Button
-            The button object that was clicked
-        """
-        await self.remove_old_output()
-
-        self.output_message = await self.callbacks["map_pool"](interaction)
-
-    @discord.ui.button(custom_id="map_weights_button", label="Map Weights", row=2,
-                       style=discord.ButtonStyle.primary,  emoji="📊")
-    async def map_weights_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
-        """[button] Sends the current map weights for the server
-
-        Parameters
-        ----------
-        interaction : discord.Object
-            The interaction object from the button click
-        button : discord.ui.Button
-            The button object that was clicked
-        """
-        await self.remove_old_output()
-
-        self.output_message = await self.callbacks["map_weights"](interaction)
-
-    @discord.ui.button(custom_id="vote_map_button", label="Map Voting", row=2,
-                       style=discord.ButtonStyle.primary, emoji="🗳️")
-    async def vote_map_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
-        """[button] Allows the user to mark their map preferences
-
-        Parameters
-        ----------
-        interaction : discord.Object
-            The interaction object from the button click
-        button : discord.ui.Button
-            The button object that was clicked
-        """
-        await self.remove_old_output()
-
-        self.output_message = await self.callbacks["vote_map"](interaction)
-
 
 class VotingButtons(discord.ui.View):
     """A view that handles the map voting process

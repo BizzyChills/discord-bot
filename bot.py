@@ -10,7 +10,7 @@ from discord.ext import commands
 from discord.ext.commands import Context
 
 from global_utils import global_utils
-from cogs.persist_commands import PersistentView, PersistCommands
+from cogs.persist_commands import PersistentView
 
 
 bot_token = getenv("DISCORD_BOT_TOKEN")
@@ -29,8 +29,7 @@ if not bot_token:
 
 async def setup_hook() -> None:
     """Re-links/syncs the bot's persistent buttons"""
-    cog = PersistCommands(bot)
-    bot.add_view(PersistentView(cog=cog))
+    bot.add_view(PersistentView())
 
     sys.stderr = open(f'./logs/{global_utils.log_date}_stderr.log', 'a', encoding="utf-8")
 
