@@ -1,0 +1,6 @@
+discord.py
+asyncpg
+asyncio
+datetime
+pytz
+asqlite
