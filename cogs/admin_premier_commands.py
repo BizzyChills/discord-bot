@@ -169,6 +169,83 @@ class AdminPremierCommands(commands.Cog):
         await interaction.response.defer()
         await self.sync_map_pool(interaction)
 
+    async def convert_addevents_date(self, interaction: discord.Interaction, date: str) -> datetime | None:
+        """Converts the date input for the /addevents command and 
+        sends an error message via interaction.followup if the date is invalid
+
+        Parameters
+        ----------
+        interaction : discord.Interaction
+            The interaction object that initiated the command
+        date : str
+            The date to convert
+
+        Returns
+        -------
+        datetime.datetime | None
+            The converted date if valid, otherwise None
+        """
+        regex = r"(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/([0-9]{2})"
+        matches = match(regex, date)
+        if not matches or sum(len(g) for g in matches.groups()) != len(date) - 2:
+            example = f"(ex. {global_utils.style_text('07/10/24 or 7/10/24', 'c')} for July 10th, 2024)"
+            format_hint = f"Please provide a date in the format {global_utils.style_text('mm/dd/yy', 'c')}. {example}"
+            m = await interaction.followup.send(f'Invalid date format. {format_hint}',
+                                                ephemeral=True)
+            await m.delete(delay=global_utils.delete_after_seconds)
+            return None
+
+        month, day, year = (str(int(g)) for g in matches.groups())
+
+        if len(month) == 1:
+            month = "0" + month
+        if len(day) == 1:
+            day = "0" + day
+
+        input_date = global_utils.tz.localize(datetime.strptime(
+            f"{month}/{day}/{year}", "%m/%d/%y"))  # - for no leading 0s
+
+        if input_date.weekday() != 3:
+            m = await interaction.followup.send('Input date is not a Thursday.',
+                                                ephemeral=True)
+            await m.delete(delay=global_utils.delete_after_seconds)
+            return None
+
+        return input_date
+
+    async def convert_addevents_maplist(self, interaction: discord.Interaction, map_list: str) -> list[str] | None:
+        """Converts the map list input for the /addevents command and
+        sends an error message via interaction.followup if the map list is invalid
+
+        Parameters
+        ----------
+        interaction : discord.Interaction
+            The interaction object that initiated the command
+        map_list : str
+            The map list to convert
+
+        Returns
+        -------
+        list[str] | None
+            The converted map list if valid
+        """
+        # split by comma and remove extra whitespace
+        new_maps = [m.strip().lower() for m in map_list.split(",")]
+        bad_maps = [m for m in new_maps if m not in global_utils.map_pool]
+
+        if bad_maps:
+            bad_maps = [global_utils.style_text(m.title(), 'i') for m in bad_maps]
+            bad_maps = ", ".join(bad_maps)
+            map_list = global_utils.style_text('map_list', 'c')
+            map_pool = global_utils.style_text('/map-pool', 'c')
+            hint = f"Ensure that {map_list} is formatted properly and that {map_pool} has been updated."
+            global_utils.debug_log(f"Bad maps: {bad_maps}")
+            await interaction.followup.send(f"The following maps are not in the map pool: {bad_maps}. {hint}",
+                                            ephemeral=True)
+            return None
+
+        return new_maps
+
     @app_commands.command(name="add-events", description=global_utils.commands["add-events"]["description"])
     @app_commands.describe(
         map_list="The map order separated by commas (whitespace between maps does not matter). Ex: 'map1, map2, map3'",
@@ -187,58 +264,22 @@ class AdminPremierCommands(commands.Cog):
             The date (mm/dd/yy) of the Thursday that starts the first event (can be in the past).
         """
         # THERE IS A RATELIMIT OF 5 EVENTS/MINUTE
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         guild = interaction.guild
 
-        # split by comma and remove extra whitespace
-        new_maps = [m.strip().lower() for m in map_list.split(",")]
+        new_maps = await self.convert_addevents_maplist(interaction, map_list)
+        thur_time = await self.convert_addevents_date(interaction, date)
 
-        for map_name in new_maps:
-            if map_name not in global_utils.map_pool:
-                map_display_name = global_utils.style_text(
-                    map_name.title(), 'i')
-                map_list = global_utils.style_text('map_list', 'c')
-                map_pool = global_utils.style_text('/map-pool', 'c')
-                hint = f"Ensure that {map_list} is formatted properly and that {map_pool} has been updated."
-                await interaction.response.send_message(f"{map_display_name} is not in the map pool. {hint}",
-                                                        ephemeral=True, delete_after=global_utils.delete_after_seconds)
-                return
+        if not thur_time or not new_maps:
+            return  # error message already sent
 
-        regex = r"(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/([0-9]{2})"
-        matches = match(regex, date)
-        if not matches or sum(len(g) for g in matches.groups()) != len(date) - 2:  # -2 for the slashes
-            example = f"(ex. {global_utils.style_text('07/10/24 or 7/10/24', 'c')} for July 10th, 2024)"
-            format_hint = f"Please provide a date in the format {global_utils.style_text('mm/dd/yy', 'c')}. {example}"
-            await interaction.response.send_message(f'Invalid date format. {format_hint}',
-                                                    ephemeral=True,
-                                                    delete_after=global_utils.delete_after_seconds)
-            return
-
-        month, day, year = (str(int(g)) for g in matches.groups())  # this removes all leading 0s
-        # we still need them for the datetime object, just don't want to duplicate them
-        if len(month) == 1:
-            month = "0" + month
-        if len(day) == 1:
-            day = "0" + day
-
-        input_date = global_utils.tz.localize(datetime.strptime(
-            f"{month}/{day}/{year}", "%m/%d/%y"))  # - for no leading 0s
-
-        if input_date.weekday() != 3:
-            await interaction.response.send_message('Input date is not a Thursday.',
-                                                    ephemeral=True,
-                                                    delete_after=global_utils.delete_after_seconds)
-            return
-
-        thur_time = datetime(year=input_date.year, month=input_date.month, day=input_date.day,
-                             hour=22, minute=0, second=0)
+        thur_time = thur_time.replace(hour=22, minute=0, second=0)
         sat_time = (thur_time + timedelta(days=2)).replace(hour=23)
         sun_time = thur_time + timedelta(days=3)
 
         start_times = [global_utils.tz.localize(
             d) for d in [thur_time, sat_time, sun_time]]
-
-        await interaction.response.defer(ephemeral=True, thinking=True)
 
         output = ""
 
