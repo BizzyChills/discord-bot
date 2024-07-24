@@ -87,7 +87,7 @@ class AdminPremierCommands(commands.Cog):
         """
         await global_utils.load_cogs(self.bot)
         await self.bot.tree.sync(guild=Object(id=interaction.guild.id))
-        await interaction.followup.send(content="Map Pool changes applied", ephemeral=True)
+        await interaction.followup.send(content="Changes applied", ephemeral=True)
         # don't delete this message. Since it can take a while to apply changes,
         # the user may miss this notification if it is deleted (ex. they afk)
 
