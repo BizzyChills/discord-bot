@@ -85,7 +85,6 @@ class PersistentView(discord.ui.View):
                               f" - {global_utils.mention_slash('hello')}",
                               f" - {global_utils.mention_slash('trivia')}",]
 
-
         self.output_message = None
 
     async def remove_old_output(self) -> None:
@@ -263,7 +262,6 @@ class PersistentView(discord.ui.View):
 
         self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
 
-
     @discord.ui.button(custom_id="vote_map_button", label="Map Voting", row=2,
                        style=discord.ButtonStyle.primary, emoji="🗳️")
     async def vote_map_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
@@ -321,6 +319,7 @@ class PersistentView(discord.ui.View):
 
         return f"{header}\n{output}" if header else output
 
+
 class VotingButtons(discord.ui.View):
     """A view that handles the map voting process
 
@@ -360,7 +359,8 @@ class VotingButtons(discord.ui.View):
         else:
             await self.question_interaction.edit_original_response(embed=embed, view=self)
 
-    @discord.ui.button(label="Like", style=discord.ButtonStyle.success, emoji="👍")
+    @discord.ui.button(label="Like", row=0,
+                       style=discord.ButtonStyle.success, emoji="👍")
     async def like(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """[button] Saves the user's preference for the current map as a like
 
@@ -375,7 +375,8 @@ class VotingButtons(discord.ui.View):
         await self.save_preference(global_utils.preference_encoder["like"])
         await self.respond()
 
-    @discord.ui.button(label="Neutral", style=discord.ButtonStyle.secondary, emoji="✊")
+    @discord.ui.button(label="Neutral", row=0,
+                       style=discord.ButtonStyle.secondary, emoji="✊")
     async def neutral(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """[button] Saves the user's preference for the current map as neutral
 
@@ -390,7 +391,8 @@ class VotingButtons(discord.ui.View):
         await self.save_preference(global_utils.preference_encoder["neutral"])
         await self.respond()
 
-    @discord.ui.button(label="Dislike", style=discord.ButtonStyle.danger, emoji="👎")
+    @discord.ui.button(label="Dislike", row=0,
+                       style=discord.ButtonStyle.danger, emoji="👎")
     async def dislike(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """[button] Saves the user's preference for the current map as a dislike
 
@@ -404,6 +406,37 @@ class VotingButtons(discord.ui.View):
         await interaction.response.defer()
         await self.save_preference(global_utils.preference_encoder["dislike"])
         await self.respond()
+
+    @discord.ui.button(label="Skip", row=1,
+                       style=discord.ButtonStyle.secondary, emoji="⏭")
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        """[button] Skips the current map and moves to the next one
+
+        Parameters
+        ----------
+        interaction : discord.Interaction
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await interaction.response.defer()
+        self.maps_left.pop(0)
+        await self.respond()
+
+    @discord.ui.button(label="Exit", row=1,
+                       style=discord.ButtonStyle.danger, emoji="✖")
+    async def exit_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        """[button] Exits the map voting process without saving any more preferences
+
+        Parameters
+        ----------
+        interaction : discord.Interaction
+            The interaction object from the button click
+        button : discord.ui.Button
+            The button object that was clicked
+        """
+        await interaction.response.defer()
+        await self.exit()
 
     async def save_preference(self, preference: str) -> None:
         """Saves the user's preference for the current map from self.map_names
