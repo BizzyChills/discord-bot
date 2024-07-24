@@ -30,7 +30,7 @@ class Utils:
         if not os.path.exists('logs'):
             os.makedirs('logs')
 
-        self.source_code = "https://github.com/BizzyChills/bot/"
+        self.source_code = "https://github.com/BizzyChills/discord-bot"
 
         self.log_date = datetime.now().strftime("%Y-%m-%d")
         self.log_filepath = f'./logs/{self.log_date}_stdout.log'
