@@ -5,7 +5,7 @@ import sys
 import asyncio
 from os import getenv
 
-from discord import Interaction, Intents, app_commands, Message
+from discord import Interaction, Intents, app_commands, Message, Embed
 from discord.ext import commands
 from discord.ext.commands import Context
 
@@ -92,6 +92,52 @@ async def on_command_error(ctx: Context, error: commands.CommandError) -> None:
         await bizzy.send(f"Error in text command by {user_name}: {error}")
 
 
+async def process_message(message: Message) -> None:
+    """[helper] Handles any special processing for a message (such as emojifying)
+
+    Parameters
+    ----------
+    message : Message
+        The message object to process
+    """
+    emoji_dict = global_utils.emojify(message.content)
+    global_utils.debug_log(f"emoji_dict: {emoji_dict}")
+    if emoji_dict["output"] != message.content:
+        global_utils.debug_log(f"emojifying message: {message.content} output: {emoji_dict['output']}")
+        await message.delete()
+        await send_emojified(message, emoji_dict)
+
+
+async def send_emojified(message: Message, emoji_dict: dict) -> None:
+    """[helper] Sends a message for a user by proxy.
+    This is mainly used for emojifying messages.
+
+    Parameters
+    ----------
+    message : discord.Message
+        The original message object
+    emoji_dict : dict
+        The dictionary containing the emojified message and a list of emojis names used
+        emoji_dict has the following structure: {"output": emojified_message, "emojis": [emoji_names]}
+    """
+    author = {"name": message.author.display_name, "icon_url": message.author.display_avatar.url}
+    description = emoji_dict["output"]
+    image_url = None
+
+    if len(emoji_dict["emojis"]) == 1:
+        emoji = emoji_dict["emojis"][0]
+        emoji = global_utils.custom_emojis[emoji]
+        # if the message is just the emoji, make it an image and not a description
+        if description == emoji["format"]:
+            description = None
+            image_url = emoji["link"]
+
+    embed = (Embed(description=description, color=message.author.color)
+    .set_author(name=author["name"],icon_url=author["icon_url"])
+    .set_image(url=image_url))
+
+    await message.channel.send(embed=embed)
+
 @bot.event
 async def on_message(message: Message) -> None:
     """[event] Executes when a message is sent
@@ -101,15 +147,19 @@ async def on_message(message: Message) -> None:
     message : discord.Message
         The message object that was sent
     """
-    if message.author == bot.user or message.channel.id != global_utils.bot_channel_id:
+    if message.author == bot.user:
         return
 
-    if message.content == "!kill" or message.content == "!reload":
+    if message.content in ["!kill", "!reload"]:
         await bot.process_commands(message)
 
-    # if message is in bot channel, and not an approved text command, delete it
-    # note: this does not affect slash commands
-    await message.delete()
+    # This channel is used for the persistent view and should not have any other messages
+    # (unless they are from the bot or are slash commands)
+    if message.channel.id == global_utils.bot_channel_id:
+        await message.delete()
+        return
+
+    await process_message(message)
 
 
 async def get_teammate_ids():

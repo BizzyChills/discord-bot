@@ -12,6 +12,7 @@ import json
 from datetime import datetime, time, timedelta
 import pytz
 from asyncio import run
+import re
 
 # reduce bloat, only for type hints
 from discord import Interaction
@@ -99,6 +100,7 @@ class Utils:
         self.map_image_urls["sunset"] = "https://static.wikia.nocookie.net/valorant/images/5/5c/Loading_Screen_Sunset.png/revision/latest/scale-to-width-down/1000?cb=20230829125442"
 
         self.commands = run(self.get_commands())
+        self.custom_emojis = run(self.get_custom_emojis())
         # pylint: enable=line-too-long
 
     def get_pool(self) -> list[str]:
@@ -224,7 +226,7 @@ class Utils:
             json.dump(self.practice_notes, file)
 
     async def get_commands(self) -> dict:
-        """Retrieves the command names and descriptions from the commands database
+        """Retrieves command names, ids, and descriptions from the commands database
 
         Returns
         -------
@@ -236,7 +238,22 @@ class Utils:
                 await cur.execute("SELECT * FROM commands")
                 rows = await cur.fetchall()
 
-        return {row[0]: {"description": row[1], "id": row[2]} for row in rows}
+        return {row[0]: {"id": row[1], "description": row[2], "emoji": row[3]} for row in rows}
+
+    async def get_custom_emojis(self) -> dict:
+        """Retrieves custom emoji names, ids, and string formats from the custom emojis database
+
+        Returns
+        -------
+        dict
+            A dictionary containing the custom emoji names and formats
+        """
+        async with asqlite.connect("./local_storage/custom_emojis.db") as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM custom_emojis")
+                rows = await cur.fetchall()
+
+        return {row[0]: {"id": row[1], "format": row[2], "link": row[3]} for row in rows}
 
     def log(self, message: str) -> None:
         """Logs a message to the current stdout log file
@@ -365,6 +382,35 @@ class Utils:
         command_id = self.commands[command_name]["id"]
 
         return f"</{command_name}:{command_id}>" if command_id else None
+
+    def emojify(self, text: str) -> dict:
+        """Formats the input string to include the bot's custom emojis in Discord.
+        In order to use an emoji, the emoji name must be surrounded by semicolons in the text.
+        Example: "Hello, ;mc_pig;!" will be formatted to "Hello, <:mc_pig:1266232717339656192>!"
+
+        Parameters
+        ----------
+        text : str
+            The formatted text to emojify
+
+        Returns
+        -------
+        dict
+            A dictionary containing the modified text and a dictionary of the names of the inserted emojis
+        """
+        if ";" not in text:
+            return {"output": text, "emojis": []}
+
+        inserted_emojis = []
+        matches = re.findall(";([A-Za-z_]+);", text)
+        for match in matches:
+            if match in self.custom_emojis:
+                text = text.replace(f";{match};", self.custom_emojis[match]["format"])
+                inserted_emojis.append(match)
+
+        text = "".join(text)
+
+        return {"output": text, "emojis": inserted_emojis}
 
     async def load_cogs(self, bot: commands.Bot) -> None:
         """Load/reload all cogs in the cogs directory
