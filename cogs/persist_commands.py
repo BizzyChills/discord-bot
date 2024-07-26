@@ -51,40 +51,44 @@ class PersistentView(discord.ui.View):
     def __init__(self, *_) -> None:
         super().__init__(timeout=None)
 
+        emojis = global_utils.commands
+        emojis = {k: emojis[k]["emoji"] for k in emojis}
+
         desc_hint = "(start typing the command to see its description)"
         self.commands_header = f"{global_utils.style_text('Commands', 'b')} {desc_hint}:"
 
         self.basic_commands = [f"- {global_utils.style_text('INFO', 'b')}:",
-                               f" - {global_utils.mention_slash('map-weights')}",
-                               f" - {global_utils.mention_slash('map-votes')}",
-                               f" - {global_utils.mention_slash('notes')}",]
+                               f" - {emojis['map-weights']} {global_utils.mention_slash('map-weights')}",
+                               f" - {emojis['map-votes']} {global_utils.mention_slash('map-votes')}",
+                               f" - {emojis['notes']} {global_utils.mention_slash('notes')}",]
 
         self.admin_commands = [f"- {global_utils.style_text('ADMIN ONLY', 'b')}:",
-                               f" - {global_utils.mention_slash('/map-pool')}",
-                               f" - {global_utils.mention_slash('add-map')}",
-                               f" - {global_utils.mention_slash('remove-map')}",
-                               f" - {global_utils.mention_slash('add-events')}",
-                               f" - {global_utils.mention_slash('cancel-event')}",
-                               f" - {global_utils.mention_slash('add-practices')}",
-                               f" - {global_utils.mention_slash('cancel-practice')}",
-                               f" - {global_utils.mention_slash('clear-schedule')}",
-                               f" - {global_utils.mention_slash('add-note')}",
-                               f" - {global_utils.mention_slash('remove-note')}",
-                               f" - {global_utils.mention_slash('remind')}",
-                               f" - {global_utils.mention_slash('pin')}",
-                               f" - {global_utils.mention_slash('unpin')}",
-                               f" - {global_utils.mention_slash('delete-message')}",
-                               f" - {global_utils.mention_slash('kill')} or {global_utils.style_text('!kill', 'c')}",]
+                               f" - {emojis['map-pool']} {global_utils.mention_slash('map-pool')}",
+                               f" - {emojis['add-map']} {global_utils.mention_slash('add-map')}",
+                               f" - {emojis['remove-map']} {global_utils.mention_slash('remove-map')}",
+                               f" - {emojis['add-events']} {global_utils.mention_slash('add-events')}",
+                               f" - {emojis['cancel-event']} {global_utils.mention_slash('cancel-event')}",
+                               f" - {emojis['add-practices']} {global_utils.mention_slash('add-practices')}",
+                               f" - {emojis['cancel-practice']} {global_utils.mention_slash('cancel-practice')}",
+                               f" - {emojis['clear-schedule']} {global_utils.mention_slash('clear-schedule')}",
+                               f" - {emojis['add-note']} {global_utils.mention_slash('add-note')}",
+                               f" - {emojis['remove-note']} {global_utils.mention_slash('remove-note')}",
+                               f" - {emojis['remind']} {global_utils.mention_slash('remind')}",
+                               f" - {emojis['pin']} {global_utils.mention_slash('pin')}",
+                               f" - {emojis['unpin']} {global_utils.mention_slash('unpin')}",
+                               f" - {emojis['delete-message']} {global_utils.mention_slash('delete-message')}",
+                               (f" - {emojis['kill']} {global_utils.mention_slash('kill')} or " +
+                                f"{global_utils.style_text('!kill', 'c')}"),]
 
         self.bizzy_commands = [f"- {global_utils.style_text('BIZZY ONLY', 'b')}:",
-                               f" - {global_utils.mention_slash('persist')}",
-                               f" - {global_utils.mention_slash('reload')} or {global_utils.style_text('!reload', 'c')}",
-                               f" - {global_utils.mention_slash('clear')}",
-                               f" - {global_utils.mention_slash('feature')}",]
+                               f" - {emojis['persist']} {global_utils.mention_slash('persist')}",
+                               (f" - {emojis['reload']} {global_utils.mention_slash('reload')} or " +
+                                f" {global_utils.style_text('!reload', 'c')}"),
+                               f" - {emojis['feature']} {global_utils.mention_slash('feature')}",]
 
         self.misc_commands = [f"- {global_utils.style_text('MISC', 'b')}:",
-                              f" - {global_utils.mention_slash('hello')}",
-                              f" - {global_utils.mention_slash('trivia')}",]
+                              f" - {emojis['hello']} {global_utils.mention_slash('hello')}",
+                              f" - {emojis['trivia']} {global_utils.mention_slash('trivia')}",]
 
         self.output_message = None
 
@@ -97,17 +101,14 @@ class PersistentView(discord.ui.View):
             except discord.NotFound:
                 pass
 
-    @discord.ui.select(placeholder="Commands List", custom_id="commands_list_type", min_values=0,
-                       options=[discord.SelectOption(label="Minimum commands", value="basic"),
-                                discord.SelectOption(
-                                    label="User commands", value="user"),
-                                discord.SelectOption(
-                                    label="Admin commands", value="admin"),
-                                discord.SelectOption(
-                                    label="Minimum + Admin", value="basic_admin"),
-                                discord.SelectOption(
-                                    label="User + Admin", value="user_admin"),
-                                discord.SelectOption(label="All commands", value="all")])
+    @discord.ui.select(placeholder=f"{global_utils.commands['commands']['emoji']} Commands List",
+                       custom_id="commands_list_type", min_values=0,
+                       options=[discord.SelectOption(label="Minimum commands", value="basic", emoji="💾"),
+                                discord.SelectOption(label="User commands", value="user", emoji="💿"),
+                                discord.SelectOption(label="Admin commands", value="admin", emoji="📀"),
+                                discord.SelectOption(label="Minimum + Admin", value="basic_admin", emoji="💽"),
+                                discord.SelectOption(label="User + Admin", value="user_admin", emoji="👥"),
+                                discord.SelectOption(label="All commands", value="all", emoji="🌎")], )
     async def commands_list_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
         """[select menu] Sends the selected list of commands
 
@@ -155,7 +156,7 @@ class PersistentView(discord.ui.View):
         self.output_message = await interaction.followup.send(embed=embed, ephemeral=True, silent=True)
 
     @discord.ui.button(custom_id="schedule_button", label="Schedule", row=1,
-                       style=discord.ButtonStyle.primary,  emoji="📅")
+                       style=discord.ButtonStyle.primary,  emoji=global_utils.commands['schedule']['emoji'])
     async def schedule_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
         """[button] Sends the premier schedule for the current server
 
@@ -209,7 +210,7 @@ class PersistentView(discord.ui.View):
         self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(custom_id="map_pool_button", label="Map Pool", row=1,
-                       style=discord.ButtonStyle.primary, emoji="🗺️")
+                       style=discord.ButtonStyle.primary, emoji=global_utils.commands['map-pool']['emoji'])
     async def map_pool_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
         """[button] Sends the current map pool for the server
 
@@ -231,7 +232,7 @@ class PersistentView(discord.ui.View):
         self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(custom_id="map_weights_button", label="Map Weights", row=2,
-                       style=discord.ButtonStyle.primary,  emoji="📊")
+                       style=discord.ButtonStyle.primary,  emoji=global_utils.commands['map-weights']['emoji'])
     async def map_weights_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
         """[button] Sends the current map weights for the server
 
@@ -264,7 +265,7 @@ class PersistentView(discord.ui.View):
         self.output_message = await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(custom_id="vote_map_button", label="Map Voting", row=2,
-                       style=discord.ButtonStyle.primary, emoji="🗳️")
+                       style=discord.ButtonStyle.primary, emoji=global_utils.commands['map-votes']['emoji'])
     async def vote_map_button(self, interaction: discord.Object, button: discord.ui.Button) -> None:
         """[button] Allows the user to mark their map preferences
 
