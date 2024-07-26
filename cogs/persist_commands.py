@@ -77,6 +77,7 @@ class PersistentView(discord.ui.View):
                                f" - {global_utils.mention_slash('kill')} or {global_utils.style_text('!kill', 'c')}",]
 
         self.bizzy_commands = [f"- {global_utils.style_text('BIZZY ONLY', 'b')}:",
+                               f" - {global_utils.mention_slash('persist')}",
                                f" - {global_utils.mention_slash('reload')} or {global_utils.style_text('!reload', 'c')}",
                                f" - {global_utils.mention_slash('clear')}",
                                f" - {global_utils.mention_slash('feature')}",]
