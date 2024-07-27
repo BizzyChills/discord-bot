@@ -88,7 +88,8 @@ class PersistentView(discord.ui.View):
 
         self.misc_commands = [f"- {global_utils.style_text('MISC', 'b')}:",
                               f" - {emojis['hello']} {global_utils.mention_slash('hello')}",
-                              f" - {emojis['trivia']} {global_utils.mention_slash('trivia')}",]
+                              f" - {emojis['trivia']} {global_utils.mention_slash('trivia')}",
+                              f" - {emojis['emojis']} {global_utils.mention_slash('emojis')}",]
 
         self.output_message = None
 
