@@ -239,7 +239,6 @@ class AdminPremierCommands(commands.Cog):
             map_list = global_utils.style_text('map_list', 'c')
             map_pool = global_utils.style_text('/map-pool', 'c')
             hint = f"Ensure that {map_list} is formatted properly and that {map_pool} has been updated."
-            global_utils.debug_log(f"Bad maps: {bad_maps}")
             await interaction.followup.send(f"The following maps are not in the map pool: {bad_maps}. {hint}",
                                             ephemeral=True)
             return None

@@ -101,9 +101,7 @@ async def process_message(message: Message) -> None:
         The message object to process
     """
     emoji_dict = global_utils.emojify(message.content)
-    global_utils.debug_log(f"emoji_dict: {emoji_dict}")
     if emoji_dict["output"] != message.content:
-        global_utils.debug_log(f"emojifying message: {message.content} output: {emoji_dict['output']}")
         await message.delete()
         await send_emojified(message, emoji_dict)
 
