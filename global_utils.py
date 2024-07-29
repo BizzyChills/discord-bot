@@ -76,32 +76,23 @@ class Utils:
         self.premier_reminder_times = [self.est_to_utc(
             t) for t in self.premier_reminder_times]
 
-        self.map_pool = self.get_pool()
-        self.map_preferences = self.get_preferences()
-        # and decoder with {v: k for k, v in self.preference_encoder.items()}
-        self.preference_encoder = {"like": '+', "neutral": '~', "dislike": '-', "error": '0'}
-
-        self.map_weights = self.get_weights()
-        self.reminders = self.get_reminders()
-        self.practice_notes = self.get_notes()
-
-        self.map_image_urls = {m: "" for m in self.map_preferences.keys()}
-        # pylint: disable=line-too-long
-        self.map_image_urls["abyss"] = "https://static.wikia.nocookie.net/valorant/images/6/61/Loading_Screen_Abyss.png/revision/latest/scale-to-width-down/1000?cb=20240621121057"
-        self.map_image_urls["ascent"] = "https://static.wikia.nocookie.net/valorant/images/e/e7/Loading_Screen_Ascent.png/revision/latest/scale-to-width-down/1000?cb=20200607180020"
-        self.map_image_urls["bind"] = "https://static.wikia.nocookie.net/valorant/images/2/23/Loading_Screen_Bind.png/revision/latest/scale-to-width-down/1000?cb=20200620202316"
-        self.map_image_urls["breeze"] = "https://static.wikia.nocookie.net/valorant/images/1/10/Loading_Screen_Breeze.png/revision/latest/scale-to-width-down/1000?cb=20210427160616"
-        self.map_image_urls["fracture"] = "https://static.wikia.nocookie.net/valorant/images/f/fc/Loading_Screen_Fracture.png/revision/latest/scale-to-width-down/1000?cb=20210908143656"
-        self.map_image_urls["haven"] = "https://static.wikia.nocookie.net/valorant/images/7/70/Loading_Screen_Haven.png/revision/latest/scale-to-width-down/1000?cb=20200620202335"
-        self.map_image_urls["icebox"] = "https://static.wikia.nocookie.net/valorant/images/1/13/Loading_Screen_Icebox.png/revision/latest/scale-to-width-down/1000?cb=20201015084446"
-        self.map_image_urls["lotus"] = "https://static.wikia.nocookie.net/valorant/images/d/d0/Loading_Screen_Lotus.png/revision/latest/scale-to-width-down/1000?cb=20230106163526"
-        self.map_image_urls["pearl"] = "https://static.wikia.nocookie.net/valorant/images/a/af/Loading_Screen_Pearl.png/revision/latest/scale-to-width-down/1000?cb=20220622132842"
-        self.map_image_urls["split"] = "https://static.wikia.nocookie.net/valorant/images/d/d6/Loading_Screen_Split.png/revision/latest/scale-to-width-down/1000?cb=20230411161807"
-        self.map_image_urls["sunset"] = "https://static.wikia.nocookie.net/valorant/images/5/5c/Loading_Screen_Sunset.png/revision/latest/scale-to-width-down/1000?cb=20230829125442"
-
         self.commands = run(self.get_commands())
         self.custom_emojis = run(self.get_custom_emojis())
-        # pylint: enable=line-too-long
+
+        map_info = run(self.get_map_info())
+
+        self.map_preferences = run(self.get_map_preferences())
+        self.map_weights = {m: map_info[m]["weight"] for m in self.map_preferences}
+        self.map_weights = dict(sorted(self.map_weights.items(), key=lambda item: item[1], reverse=True))
+        self.map_preferences = {m: self.map_preferences[m] for m in self.map_weights}
+
+        self.map_pool = sorted([m for m in map_info if map_info[m]["in_pool"]])
+        self.map_image_urls = {m: map_info[m]["url"] for m in self.map_preferences}
+
+        self.practice_notes = run(self.get_map_notes())
+
+        self.reminders = self.get_reminders()
+
 
     def get_pool(self) -> list[str]:
         """Extracts the map pool from ./local_storage/map_pool.txt
@@ -179,11 +170,9 @@ class Utils:
         """Saves any changes made to the map weights during runtime to ./local_storage/map_weights.json
         """
         for map_name, user_weights in self.map_preferences.items():
-            self.map_weights[map_name] = sum(
-                [1 if weight == "+" else -1 if weight == "-" else 0 for weight in user_weights.values()])
+            self.map_weights[map_name] = sum(user_weights.values())
 
-        self.map_weights = {k: self.map_weights[k]
-                            for k in sorted(self.map_weights)}
+        self.map_weights = dict(sorted(self.map_weights.items(), key=lambda item: item[1], reverse=True))
 
         with open("./local_storage/map_weights.json", "w", encoding="utf-8") as file:
             json.dump(self.map_weights, file)
@@ -254,6 +243,75 @@ class Utils:
                 rows = await cur.fetchall()
 
         return {row[0]: {"id": row[1], "format": row[2], "link": row[3]} for row in rows}
+
+    async def get_map_preferences(self) -> dict:
+        """Retrieves the map preferences from the map preferences database
+
+        Returns
+        -------
+        dict
+            A dictionary containing the map preferences for each user
+            grouped by map name
+        """
+        ret = {}
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("PRAGMA table_info(preferences)")
+                columns = await cur.fetchall()
+
+                for c in columns:
+                    if c[1] == "user_id":
+                        continue
+
+                    await cur.execute(f"SELECT user_id, {c[1]} FROM preferences")
+                    rows = await cur.fetchall()
+
+                    ret.update({c[1]: {row[0]: row[1] for row in rows}})
+
+        return ret
+
+    async def get_map_info(self) -> dict:
+        """Retrieves the map info from the map info database
+
+        Returns
+        -------
+        dict
+            A dictionary containing the map info for each map
+        """
+        ret = {}
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM info")
+                rows = await cur.fetchall()
+
+                for row in rows:
+                    ret[row[0]] = {
+                        "in_pool": row[1],
+                        "weight": row[2],
+                        "url": row[3]
+                    }
+
+        return ret
+
+    async def get_map_notes(self) -> dict:
+        """Retrieves the practice notes from the practice notes database
+
+        Returns
+        -------
+        dict
+            A dictionary containing the practice notes for each map
+            grouped by map name and containing the message ID and description
+        """
+        ret = {}
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM notes")
+                rows = await cur.fetchall()
+
+                for row in rows:
+                    ret[row[0]] = {row["message_id"]: row["description"]}
+
+        return ret
 
     def log(self, message: str) -> None:
         """Logs a message to the current stdout log file

@@ -250,7 +250,8 @@ class PersistentView(discord.ui.View):
 
         output = ""
 
-        for map_name in global_utils.map_pool:
+        # don't just iterate over the map pool, the weights are sorted by weight and pool is not.
+        for map_name in [m for m in global_utils.map_weights if m in global_utils.map_pool]:
             map_display_name = global_utils.style_text(map_name.title(), 'i')
             weight = global_utils.style_text(
                 global_utils.map_weights[map_name], 'b')
@@ -339,11 +340,11 @@ class VotingButtons(discord.ui.View):
         super().__init__(timeout=timeout)
 
         self.question_interaction = interaction
-        self.user_id = str(interaction.user.id)
+        self.user_id = interaction.user.id
 
-        self.maps_left = list(global_utils.map_preferences.keys())
+        self.maps_left = global_utils.map_pool.copy()
 
-        self.emojis = {"+": "👍", "~": "✊", "-": "👎", "?": "❔"}
+        self.emojis = {1: "👍", 0: "✊", -1: "👎", -2: "❔"}
 
         self.started = False
 
@@ -375,7 +376,7 @@ class VotingButtons(discord.ui.View):
             The button object that was clicked
         """
         await interaction.response.defer()
-        await self.save_preference(global_utils.preference_encoder["like"])
+        await self.save_preference(1)
         await self.respond()
 
     @discord.ui.button(label="Neutral", row=0,
@@ -391,7 +392,7 @@ class VotingButtons(discord.ui.View):
             The button object that was clicked
         """
         await interaction.response.defer()
-        await self.save_preference(global_utils.preference_encoder["neutral"])
+        await self.save_preference(0)
         await self.respond()
 
     @discord.ui.button(label="Dislike", row=0,
@@ -407,7 +408,7 @@ class VotingButtons(discord.ui.View):
             The button object that was clicked
         """
         await interaction.response.defer()
-        await self.save_preference(global_utils.preference_encoder["dislike"])
+        await self.save_preference(-1)
         await self.respond()
 
     @discord.ui.button(label="Skip", row=1,
@@ -441,17 +442,16 @@ class VotingButtons(discord.ui.View):
         await interaction.response.defer()
         await self.exit()
 
-    async def save_preference(self, preference: str) -> None:
+    async def save_preference(self, preference: int) -> None:
         """Saves the user's preference for the current map from self.map_names
 
         Parameters
         ----------
-        preference : str
-            The preference value to save (either "+", "~", or "-")
+        preference : int
         """
         map_name = self.maps_left.pop(0)
         user_id = self.question_interaction.user.id
-        global_utils.map_preferences[map_name][str(user_id)] = preference
+        global_utils.map_preferences[map_name][user_id] = preference
         global_utils.save_preferences()
 
     async def respond(self) -> None:
@@ -464,9 +464,9 @@ class VotingButtons(discord.ui.View):
         map_display_name = global_utils.style_text(map_name.title(), 'i')
         map_url = global_utils.map_image_urls.get(map_name, None)
 
-        encoded_preference = global_utils.map_preferences[map_name].get(
-            self.user_id, "?")
-        user_preference = self.emojis[encoded_preference]
+        user_weight = global_utils.map_preferences[map_name].get(
+            self.user_id, -2)
+        user_preference = self.emojis[user_weight]
 
         embed = discord.Embed(
             title="Map Voting", description=f"What do you think of {map_display_name}?", color=discord.Color.blurple())

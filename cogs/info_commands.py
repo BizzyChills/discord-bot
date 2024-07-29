@@ -46,12 +46,7 @@ class InfoCommands(commands.Cog):
 
         output = ""
 
-        global_utils.map_weights = dict(sorted(global_utils.map_weights.items(
-        ), key=lambda item: item[1], reverse=True))  # sort the weights in descending order
-
-        for map_name in global_utils.map_weights.keys():
-            if map_name not in global_utils.map_pool:
-                continue
+        for map_name in [m for m in global_utils.map_weights.keys() if m in global_utils.map_pool]:
 
             map_display_name = global_utils.style_text(map_name.title(), 'i')
             weight = global_utils.style_text(
@@ -93,23 +88,22 @@ class InfoCommands(commands.Cog):
 
         output = ""
 
-        for map_name in global_utils.map_pool:
+        for map_name in [m for m in global_utils.map_preferences if m in global_utils.map_pool]:
             header = (f"- {global_utils.style_text(map_name.title(), 'i')}" +
                       f" ({global_utils.style_text(global_utils.map_weights[map_name], 'b')}):\n")
             body = ""
 
             for user in premier_team:
-                id_str = str(user.id)
-                if id_str not in global_utils.map_preferences[map_name]:
+                if user.id not in global_utils.map_preferences[map_name]:
                     continue
 
-                encoded_weight = global_utils.map_preferences[map_name][id_str]
+                user_weight = global_utils.map_preferences[map_name][user.id]
 
-                preference_decoder = {v: k for k, v in global_utils.preference_encoder.items()}
+                preference_decoder = {-1: "Dislike", 0: "Neutral", 1: "Like"}
 
-                weight = preference_decoder.get(encoded_weight, "Preference Error")
+                user_preference = preference_decoder.get(user_weight, "Preference Error")
 
-                body += f" - {user.mention}: {global_utils.style_text(weight, 'c')}\n"
+                body += f" - {user.mention}: {global_utils.style_text(user_preference, 'c')}\n"
 
             if body == "":
                 body = " - No votes for this map.\n"
