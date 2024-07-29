@@ -129,7 +129,7 @@ class TasksCog(commands.Cog):
         return channel, role
 
     @tasks.loop(time=global_utils.premier_reminder_times)
-    async def eventreminders(self) -> None: # pylint: disable=too-many-locals
+    async def eventreminders(self) -> None:  # pylint: disable=too-many-locals
         """[task] Sends reminders for upcoming events near starting times of West Coast premier events
         """
         global_utils.log("Checking for event reminders")

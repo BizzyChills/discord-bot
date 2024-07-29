@@ -131,10 +131,11 @@ async def send_emojified(message: Message, emoji_dict: dict) -> None:
             image_url = emoji["link"]
 
     embed = (Embed(description=description, color=message.author.color)
-    .set_author(name=author["name"],icon_url=author["icon_url"])
-    .set_image(url=image_url))
+             .set_author(name=author["name"], icon_url=author["icon_url"])
+             .set_image(url=image_url))
 
     await message.channel.send(embed=embed)
+
 
 @bot.event
 async def on_message(message: Message) -> None:

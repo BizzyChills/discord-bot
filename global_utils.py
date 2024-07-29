@@ -93,7 +93,6 @@ class Utils:
 
         self.reminders = self.get_reminders()
 
-
     def get_pool(self) -> list[str]:
         """Extracts the map pool from ./local_storage/map_pool.txt
 
