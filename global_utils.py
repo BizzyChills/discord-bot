@@ -81,9 +81,8 @@ class Utils:
 
         map_info = run(self.get_map_info())
 
+        self.map_weights = {m: map_info[m]["weight"] for m in map_info}
         self.map_preferences = run(self.get_map_preferences())
-        self.map_weights = {m: map_info[m]["weight"] for m in self.map_preferences}
-        self.map_weights = dict(sorted(self.map_weights.items(), key=lambda item: item[1], reverse=True))
         self.map_preferences = {m: self.map_preferences[m] for m in self.map_weights}
 
         self.map_pool = sorted([m for m in map_info if map_info[m]["in_pool"]])
@@ -280,7 +279,7 @@ class Utils:
         ret = {}
         async with asqlite.connect("./local_storage/maps.db") as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT * FROM info")
+                await cur.execute("SELECT * FROM info ORDER BY weight DESC")
                 rows = await cur.fetchall()
 
                 for row in rows:
