@@ -111,16 +111,16 @@ class AdminGenericCommands(commands.Cog):
         output = ""
 
         if unit == "seconds":
-            output = f'(reminder) I will remind {role} in {interval} second(s) with the message: "{message}"'
             when = current_time + timedelta(seconds=interval)
+            output = f'(reminder) I will remind {role} in {interval} second(s) with the message: "{message}"'
         elif unit == "minutes":
+            interval *= 60
             when = current_time + timedelta(minutes=interval)
             output = f'(reminder) I will remind {role} in {interval} minute(s) with the message: "{message}"'
-            interval *= 60
         elif unit == "hours":
+            interval *= 3600
             when = current_time + timedelta(hours=interval)
             output = f'(reminder) I will remind {role} in {interval} hour(s) with the message: "{message}"'
-            interval *= 3600
 
         await interaction.response.send_message(output, ephemeral=True)
 
