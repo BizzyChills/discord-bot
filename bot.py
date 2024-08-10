@@ -149,7 +149,8 @@ async def on_message(message: Message) -> None:
     if message.author == bot.user:
         return
 
-    if message.content in ["!kill", "!reload"]:
+    if (message.content.startswith(f"{bot.command_prefix}kill")
+        or message.content.startswith(f"{bot.command_prefix}reload")):
         await bot.process_commands(message)
 
     # This channel is used for the persistent view and should not have any other messages
