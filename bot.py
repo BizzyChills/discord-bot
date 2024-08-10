@@ -55,6 +55,10 @@ async def on_app_command_error(interaction: Interaction, error: app_commands.App
     if interaction.is_expired():
         raise error
 
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(f"{error}", ephemeral=True)
+        return
+
     if interaction.user.id == global_utils.my_id:
         await interaction.response.send_message(f"{error}", ephemeral=True)
     else:
@@ -150,7 +154,7 @@ async def on_message(message: Message) -> None:
         return
 
     if (message.content.startswith(f"{bot.command_prefix}kill")
-        or message.content.startswith(f"{bot.command_prefix}reload")):
+            or message.content.startswith(f"{bot.command_prefix}reload")):
         await bot.process_commands(message)
 
     # This channel is used for the persistent view and should not have any other messages

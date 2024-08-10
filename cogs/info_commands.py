@@ -1,6 +1,8 @@
 """[cog] A cog for displaying general premier information
 (that isn'tW provided by persist_commands.py).
 """
+import asqlite
+
 import discord
 from discord.ext import commands
 from discord import errors
@@ -46,7 +48,7 @@ class InfoCommands(commands.Cog):
 
         output = ""
 
-        for map_name in [m for m in global_utils.map_weights.keys() if m in global_utils.map_pool]:
+        for map_name in [m for m in global_utils.map_weights if m in global_utils.map_pool]:
 
             map_display_name = global_utils.style_text(map_name.title(), 'i')
             weight = global_utils.style_text(
@@ -88,7 +90,8 @@ class InfoCommands(commands.Cog):
 
         output = ""
 
-        for map_name in [m for m in global_utils.map_preferences if m in global_utils.map_pool]:
+        # map_weights is sorted by weight already,
+        for map_name in [m for m in global_utils.map_weights if m in global_utils.map_pool]:
             header = (f"- {global_utils.style_text(map_name.title(), 'i')}" +
                       f" ({global_utils.style_text(global_utils.map_weights[map_name], 'b')}):\n")
             body = ""
@@ -99,7 +102,7 @@ class InfoCommands(commands.Cog):
 
                 user_weight = global_utils.map_preferences[map_name][user.id]
 
-                preference_decoder = {-1: "Dislike", 0: "Neutral", 1: "Like"}
+                preference_decoder = {-1: "👎", 0: "🤷‍♀️", 1: "👍"}
 
                 user_preference = preference_decoder.get(user_weight, "Preference Error")
 
@@ -126,7 +129,7 @@ class InfoCommands(commands.Cog):
     )
     @app_commands.describe(
         map_name="The map to display the note for",
-        note_number="The note number to display (1-indexed). Leave empty to see options.",
+        note_number="The note number to display (1-indexed). Leave empty (or input 0) to see options.",
         announce="Return the note so that it is visible to everyone (only in notes channel)"
     )
     async def notes(self, interaction: discord.Interaction, map_name: str,
@@ -177,7 +180,10 @@ class InfoCommands(commands.Cog):
             note = await interaction.channel.fetch_message(int(note_id))
         except errors.NotFound:
             global_utils.practice_notes[map_name].pop(note_id)
-            global_utils.save_notes()
+            async with asqlite.connect("./local_storage/maps.db") as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+                await conn.commit()
             m = await interaction.followup.send('The original message has been deleted. Removing it from the list.',
                                                 ephemeral=True)
             await m.delete(delay=global_utils.delete_after_seconds)

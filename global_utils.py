@@ -8,7 +8,6 @@ global_utils
 """
 # pylint: disable=wrong-import-order
 import os
-import json
 from datetime import datetime, time, timedelta
 import pytz
 from asyncio import run
@@ -89,128 +88,6 @@ class Utils:
         self.map_image_urls = {m: map_info[m]["url"] for m in self.map_preferences}
 
         self.practice_notes = run(self.get_map_notes())
-
-        self.reminders = self.get_reminders()
-
-    def get_pool(self) -> list[str]:
-        """Extracts the map pool from ./local_storage/map_pool.txt
-
-        Returns
-        -------
-        list
-            A list of strings containing the maps in the current map pool
-        """
-        with open("./local_storage/map_pool.txt", "r", encoding="utf-8") as file:
-            return file.read().splitlines()
-
-    def save_pool(self) -> None:
-        """Saves any changes made to the map pool during runtime to ./local_storage/map_pool.txt
-        """
-        self.map_pool.sort()
-        with open("./local_storage/map_pool.txt", "w", encoding="utf-8") as file:
-            file.write("\n".join(self.map_pool))
-
-    def get_preferences(self) -> dict:
-        """Extracts the map preferences from ./local_storage/map_preferences.json
-
-        Returns
-        -------
-        dict
-            A 2D dictionary containing with the following structure: {map: {user_id: weight}}
-        """
-        with open("./local_storage/map_preferences.json", "r", encoding="utf-8") as file:
-            prefs = json.load(file)
-            if prefs == {}:
-                try:
-                    prefs = {map_name: {} for map_name in self.map_pool}
-                except AttributeError:
-                    self.map_pool = self.get_pool()
-                    prefs = {map_name: {} for map_name in self.map_pool}
-
-            return prefs
-
-    def save_preferences(self) -> None:
-        """Saves any changes made to the map preferences during runtime to 
-        ./local_storage/map_preferences.json and also saves the map weights
-        """
-        self.map_preferences = {
-            k: self.map_preferences[k] for k in sorted(self.map_preferences)}
-
-        # filter out old teammates' preferences, but we need to be careful not to accidentally remove all preferences
-        # so just don't do any filtering if the roster is empty
-        if self.teammate_ids:
-            for map_name in self.map_preferences.keys():
-                prefs = self.map_preferences[map_name]
-                self.map_preferences[map_name] = {
-                    u_id: prefs[u_id] for u_id in prefs if int(u_id) in self.teammate_ids}
-
-        with open("./local_storage/map_preferences.json", "w", encoding="utf-8") as file:
-            json.dump(self.map_preferences, file)
-
-        self.save_weights()
-
-    def get_weights(self) -> dict:
-        """Extracts the map weights from ./local_storage/map_weights.json
-
-        Returns
-        -------
-        dict
-            A dictionary containing the weights for each map in the current map pool
-        """
-        with open("./local_storage/map_weights.json", "r", encoding="utf-8") as file:
-            weights = json.load(file)
-            if weights == {}:
-                weights = {map_name: 0 for map_name in self.map_preferences}
-
-            return weights
-
-    def save_weights(self) -> None:
-        """Saves any changes made to the map weights during runtime to ./local_storage/map_weights.json
-        """
-        for map_name, user_weights in self.map_preferences.items():
-            self.map_weights[map_name] = sum(user_weights.values())
-
-        self.map_weights = dict(sorted(self.map_weights.items(), key=lambda item: item[1], reverse=True))
-
-        with open("./local_storage/map_weights.json", "w", encoding="utf-8") as file:
-            json.dump(self.map_weights, file)
-
-    def get_reminders(self) -> dict:
-        """Extracts the reminders from ./local_storage/reminders.json
-
-        Returns
-        -------
-        dict
-            A 2D dictionary containing with the following structure: {guild_id: {reminder_time: reminder_message}}
-        """
-        with open("./local_storage/reminders.json", "r", encoding="utf-8") as file:
-            return json.load(file)
-
-    def save_reminders(self) -> None:
-        """Saves any changes made to the reminders during runtime to ./local_storage/reminders.json
-        """
-        with open("./local_storage/reminders.json", "w", encoding="utf-8") as file:
-            json.dump(self.reminders, file)
-
-    def get_notes(self) -> dict:
-        """Extracts the practice notes from ./local_storage/notes.json file.
-        This does not actually contain the notes, but rather the message IDs of the notes in the notes channel.
-
-        Returns
-        -------
-        dict
-            A 2D dictionary containing with the following structure: {map: {note_message_id: note_description}}
-        """
-        with open("./local_storage/notes.json", "r", encoding="utf-8") as file:
-            return json.load(file)
-
-    def save_notes(self) -> None:
-        """Saves any changes made to the practice notes during runtime to ./local_storage/notes.json
-        """
-        if not isinstance(self.practice_notes, dict):
-            self.practice_notes = {}
-        with open("./local_storage/notes.json", "w", encoding="utf-8") as file:
-            json.dump(self.practice_notes, file)
 
     async def get_commands(self) -> dict:
         """Retrieves command names, ids, and descriptions from the commands database
@@ -307,7 +184,14 @@ class Utils:
                 rows = await cur.fetchall()
 
                 for row in rows:
-                    ret[row[0]] = {row["message_id"]: row["description"]}
+                    map_name = row["map"]
+                    m_id = row["message_id"]
+                    desc = row["description"]
+
+                    if map_name not in ret:
+                        ret[map_name] = {}
+
+                    ret[map_name][m_id] = desc
 
         return ret
 

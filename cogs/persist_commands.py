@@ -2,6 +2,7 @@
 and processing the commands that are sent through them
 """
 from datetime import datetime
+import asqlite
 
 import discord
 from discord import app_commands
@@ -111,7 +112,7 @@ class PersistentView(discord.ui.View):
                                 discord.SelectOption(label="User + Admin", value="user_admin", emoji="👥"),
                                 discord.SelectOption(label="All commands", value="all", emoji="🌎")], )
     async def commands_list_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
-        """[select menu] Sends the selected list of commands
+        """[select] Sends the selected list of commands
 
         Parameters
         ----------
@@ -380,7 +381,7 @@ class VotingButtons(discord.ui.View):
         await self.respond()
 
     @discord.ui.button(label="Neutral", row=0,
-                       style=discord.ButtonStyle.secondary, emoji="✊")
+                       style=discord.ButtonStyle.secondary, emoji="🤷‍♀️")
     async def neutral(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """[button] Saves the user's preference for the current map as neutral
 
@@ -451,8 +452,24 @@ class VotingButtons(discord.ui.View):
         """
         map_name = self.maps_left.pop(0)
         user_id = self.question_interaction.user.id
+        if global_utils.map_preferences[map_name].get(user_id, -2) == preference:
+            return
+
         global_utils.map_preferences[map_name][user_id] = preference
-        global_utils.save_preferences()
+        global_utils.map_weights[map_name] += preference
+
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("Start TRANSACTION")
+                await cur.execute("""
+                    INSERT INTO map_preferences (user_id, map_name)
+                    VALUES (?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET map_name = ?
+                """, (user_id, preference, preference))
+
+                await cur.execute("UPDATE info SET weight = ? WHERE map_name = ?",
+                                  (global_utils.map_weights[map_name], map_name))
+            await conn.commit()
 
     async def respond(self) -> None:
         """Responds to the user after they click a button by either asking the next question or disabling the buttons

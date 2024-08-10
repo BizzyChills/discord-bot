@@ -3,16 +3,35 @@
 from datetime import datetime, time, timedelta
 from re import match
 from pytz import utc
+import asqlite
 
 import discord
 from discord.ext import commands
-from discord.ext.commands import Context
 from discord import app_commands, Object
 
 from global_utils import global_utils
 
 # pylint: disable=invalid-overridden-method
 # pylint: disable=arguments-differ
+
+
+def owner_excluded_cooldown(interaction: discord.Interaction) -> app_commands.Cooldown | None:
+    """A custom cooldown decorator that excludes the bot owner from the cooldown
+
+    Parameters
+    ----------
+    interaction : discord.Interaction
+        The interaction object that initiated the command
+
+    Returns
+    -------
+    app_commands.Cooldown | None
+        The cooldown object if the user is not the owner, None otherwise
+    """
+    if interaction.user.id == global_utils.my_id:
+        return None
+
+    return app_commands.Cooldown(1, 60)
 
 
 class AdminPremierCommands(commands.Cog):
@@ -44,22 +63,9 @@ class AdminPremierCommands(commands.Cog):
         """
         return await global_utils.is_admin(interaction)
 
-    async def cog_check(self, ctx: Context) -> bool:
-        """[prefix check] A global check for all text commands in this cog to ensure the user is an admin
-
-        Parameters
-        ----------
-        ctx : discord.ext.commands.Context
-            The context object that initiated the command
-
-        Returns
-        -------
-        bool
-            True if the user is an admin, False otherwise
-        """
-        return await global_utils.is_admin(ctx)
-
     @app_commands.command(name="map-pool", description=global_utils.commands["map-pool"]["description"])
+    # since this command syncs the bot entirely, we need to limit it
+    @app_commands.checks.dynamic_cooldown(owner_excluded_cooldown)
     async def map_pool(self, interaction: discord.Interaction) -> None:
         """[app command] Opens the map pool modification panel
 
@@ -71,37 +77,36 @@ class AdminPremierCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         view = MapPoolPanel(sync_changes=self.sync_map_pool)
-        embed = discord.Embed(title="Map Pool", description="- " + '\n- '.join([global_utils.style_text(
-            m.title(), 'i') for m in global_utils.map_pool]), color=discord.Color.blurple())
 
         await interaction.followup.send("Map Pool (make sure you click out of the dropdown before hitting a button)",
-                                        view=view, embed=embed, ephemeral=True)
+                                        view=view, ephemeral=True)
 
-    async def sync_map_pool(self, interaction: discord.Interaction) -> None:
-        """Saves changes made to the map pool and the overall map list
+    async def sync_map_pool(self) -> None:
+        """Reflects the changes made to the map pool in relevant command options
 
         Parameters
         ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
+        guild_id : int
+            The guild ID to sync the map pool in
         """
         await global_utils.load_cogs(self.bot)
-        await self.bot.tree.sync(guild=Object(id=interaction.guild.id))
-        await interaction.followup.send(content="Changes applied", ephemeral=True)
-        # don't delete this message. Since it can take a while to apply changes,
-        # the user may miss this notification if it is deleted (ex. they afk)
+        await self.bot.tree.sync(guild=Object(id=global_utils.val_server_id))
+        await self.bot.tree.sync(guild=Object(id=global_utils.debug_server_id))
 
     @app_commands.command(name="add-map", description=global_utils.commands["add-map"]["description"])
     @app_commands.describe(
         map_name="The name of the map that was added to the game"
     )
-    async def add_map(self, interaction: discord.Interaction, map_name: str) -> None:
+    @app_commands.checks.cooldown(1, 60, key=None)
+    async def add_map(self, interaction: discord.Interaction, map_name: str, url: str = "") -> None:
         """[app command] Adds a new map to the list of all maps in the game
 
         Parameters
         ----------
         map_name : str
             The map to add
+        url : str, optional
+            The URL of the map image, by default ""
         """
         # await interaction.response.defer(ephemeral=True)
         map_name = map_name.lower()
@@ -112,15 +117,25 @@ class AdminPremierCommands(commands.Cog):
                                                     ephemeral=True, delete_after=global_utils.delete_after_seconds)
             return
 
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("BEGIN TRANSACTION")
+                await cursor.execute("INSERT INTO info VALUES (?, ?, ?, ?)", (map_name, 0, 0, url))
+                await cursor.execute(f"ALTER TABLE preferences ADD COLUMN {map_name} integer default NULL")
+            await conn.commit()
+
         global_utils.map_preferences = {
             map_name: {}} | global_utils.map_preferences
         global_utils.map_weights = {map_name: 0} | global_utils.map_weights
+        global_utils.map_weights = {k: v for k, v in sorted(
+            global_utils.map_weights.items(), key=lambda item: item[1], reverse=True)}
+        global_utils.map_image_urls[map_name] = url
 
-        # note: this function also calls save_weights
-        global_utils.save_preferences()
-
-        await interaction.response.defer()
-        await self.sync_map_pool(interaction)
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await self.sync_map_pool()
+        m = await interaction.followup.send(f'Map "{map_display_name}" has been added to the game.',
+                                            ephemeral=True)
+        await m.delete(delay=global_utils.delete_after_seconds)
 
     @app_commands.command(name="remove-map", description=global_utils.commands["remove-map"]["description"])
     @app_commands.describe(
@@ -133,6 +148,7 @@ class AdminPremierCommands(commands.Cog):
         confirm=[app_commands.Choice(
             name="WARNING: This will remove the map and all of its data from the game (weights, votes, etc.)", value=1)]
     )
+    @app_commands.checks.cooldown(1, 60, key=None)
     async def remove_map(self, interaction: discord.Interaction, map_name: str, confirm: int) -> None:  # pylint: disable=unused-argument
         """[app command] Removes a new map to the list of all maps in the game
 
@@ -155,19 +171,35 @@ class AdminPremierCommands(commands.Cog):
         if map_name in global_utils.map_pool:
             global_utils.map_pool.remove(map_name)
 
-        # if there are practice notes for it, remove the references
-        global_utils.practice_notes.pop(map_name, None)
-        global_utils.save_notes()
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("DELETE FROM info WHERE map = ?", (map_name,))
+                await cursor.execute("DELETE FROM notes WHERE map = ?", (map_name,))
+                await cursor.execute("PRAGMA table_info(preferences)")
+                cols = await cursor.fetchall()
+                cols = [c[1] for c in cols if c[1] != map_name]
+                new_cols = ' integer default NULL, '.join(cols) + ' integer default NULL'
+
+                await cursor.execute("BEGIN TRANSACTION")
+                await cursor.execute(f"CREATE TEMP TABLE temp_table({new_cols})")
+                await cursor.execute(f"INSERT INTO temp_table SELECT {', '.join(cols)} FROM preferences")
+                await cursor.execute("DROP TABLE preferences")
+
+                new_cols = f"user_id integer primary key, {' integer default NULL, '.join(cols)} integer default NULL"
+                await cursor.execute(f"CREATE TABLE preferences({new_cols})")
+                await cursor.execute("INSERT INTO preferences SELECT * FROM temp_table")
+                await cursor.execute("DROP TABLE temp_table")
+
+            await conn.commit()
 
         global_utils.map_preferences.pop(map_name)
         global_utils.map_weights.pop(map_name)
-
-        global_utils.save_pool()
-        # note: this function also calls save_weights
-        global_utils.save_preferences()
+        global_utils.map_image_urls.pop(map_name, None)
 
         await interaction.response.defer()
-        await self.sync_map_pool(interaction)
+        await self.sync_map_pool()
+        await interaction.followup.send(f'Map "{map_display_name}" has been removed from the game.',
+                                        ephemeral=True)
 
     async def convert_addevents_date(self, interaction: discord.Interaction, date: str) -> datetime | None:
         """Converts the date input for the /addevents command and 
@@ -250,6 +282,7 @@ class AdminPremierCommands(commands.Cog):
         map_list="The map order separated by commas (whitespace between maps does not matter). Ex: 'map1, map2, map3'",
         date="The date (mm/dd/yy) of the Thursday that starts the first event (can be in the past)."
     )
+    @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild.id)
     async def addevents(self, interaction: discord.Interaction, map_list: str, date: str) -> None:
         """[app command] Adds all premier events to the schedule at a rate of 5 events/minute
 
@@ -338,6 +371,7 @@ class AdminPremierCommands(commands.Cog):
         all_events="Cancel all events for the specified map",
         announce="Announce the cancellation when used in the premier channel"
     )
+    @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild.id)
     async def cancelevent(self, interaction: discord.Interaction, map_name: str,
                           all_events: int = 0, announce: int = 0) -> None:
         """[app command] Cancels the next premier event (or all events on a map).
@@ -406,6 +440,7 @@ class AdminPremierCommands(commands.Cog):
             await m.delete(delay=global_utils.delete_after_seconds)
 
     @app_commands.command(name="add-practices", description=global_utils.commands["add-practices"]["description"])
+    @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild.id)
     async def addpractices(self, interaction: discord.Interaction) -> None:
         """[app command] Adds all premier practice events to the schedule at a rate of 5 practices/minute. 
         Ensure that the premier events have been added first using /addevents
@@ -474,6 +509,7 @@ class AdminPremierCommands(commands.Cog):
         all_practices="Cancel all events for the specified map",
         announce="Announce the cancellation when used in the premier channel"
     )
+    @app_commands.checks.cooldown(1, 60, key=lambda i: i.guild.id)
     async def cancelpractice(self, interaction: discord.Interaction, map_name: str,
                              all_practices: int = 0, announce: int = 0) -> None:
         """[app command] Cancels the next premier practice event (or all practices on a map)
@@ -546,6 +582,7 @@ class AdminPremierCommands(commands.Cog):
         confirm='Confirm clear. Note: This will clear all events with "Premier" in the name.',
         announce="Announce that the schedule has been cleared when used in the premier channel"
     )
+    @app_commands.checks.cooldown(1, 300, key=lambda i: i.guild.id)
     async def clearschedule(self, interaction: discord.Interaction, confirm: str, announce: int = 0) -> None:  # pylint: disable=unused-argument
         """[app command] Clears the premier schedule (by deleting all events with "Premier" in the name)
 
@@ -626,7 +663,10 @@ class AdminPremierCommands(commands.Cog):
 
         global_utils.practice_notes[map_name][note_id] = description
 
-        global_utils.save_notes()
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("INSERT INTO notes VALUES (?, ?, ?)", (note_id, map_name, description))
+            await conn.commit()
 
         global_utils.log(
             f'{interaction.user.display_name} has added a practice note. Note ID: {note_id}')
@@ -668,7 +708,7 @@ class AdminPremierCommands(commands.Cog):
                                                     ephemeral=True, delete_after=global_utils.delete_after_seconds)
             return
 
-        if note_number < 0 or note_number > len(global_utils.practice_notes[map_name]):
+        if note_number not in range(len(global_utils.practice_notes[map_name]) + 1):
             await interaction.response.send_message('Invalid note number. Leave blank to see all options.',
                                                     ephemeral=True, delete_after=global_utils.delete_after_seconds)
             return
@@ -694,7 +734,11 @@ class AdminPremierCommands(commands.Cog):
         await interaction.response.send_message(f"Removed a practice note for {map_display_name}",
                                                 ephemeral=True, delete_after=global_utils.delete_after_seconds)
 
-        global_utils.save_notes()
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+            await conn.commit()
+
         global_utils.log(
             f'{interaction.user.display_name} has removed a practice note. Note ID: {note_id}')
 
@@ -726,11 +770,12 @@ class MapPoolPanel(discord.ui.View):
         interaction : discord.Interaction
             The interaction object linked to the panel
         """
-        for child in self.children:
-            child.disabled = True
+        # for child in self.children:
+        #     child.disabled = True
 
-        await self.resend(interaction)
-        self.stop()
+        # await self.resend(interaction)
+        # self.stop()
+        interaction.response.edit_message(content="Changes applied", view=None)
 
     async def resend(self, interaction: discord.Interaction) -> None:
         """Updates the map pool panel display
@@ -743,18 +788,15 @@ class MapPoolPanel(discord.ui.View):
         self.pool.sort()
 
         for option in self.select.options:
-            option.default = False if option.value not in self.pool else True
+            option.default = option.value in self.pool
 
-        pool_display = "\n- ".join([global_utils.style_text(m.title(), 'i') for m in self.pool])
-        embed = discord.Embed(title="Map Pool", description=f"- {pool_display}", color=discord.Color.blurple())
-
-        await interaction.response.edit_message(content="Map Pool", embed=embed, view=self)
+        await interaction.response.edit_message(content="Map Pool", view=self)
 
     @discord.ui.select(custom_id="map_pool", placeholder="Maps", row=0,
                        min_values=1, max_values=len(global_utils.map_preferences),
                        options=[
                            discord.SelectOption(label=m.title(), value=m, default=m in global_utils.map_pool)
-                           for m in global_utils.map_preferences
+                           for m in sorted(global_utils.map_preferences)
                        ])
     async def map_list(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
         """[select] Updates the map pool copy based on the selected maps
@@ -766,7 +808,7 @@ class MapPoolPanel(discord.ui.View):
         select : discord.ui.Select
             The select object that was interacted with
         """
-        self.pool = self.select.values
+        self.pool = sorted(self.select.values)
         await self.resend(interaction)
 
     @discord.ui.button(custom_id="apply_changes", label="Apply Changes", row=1,
@@ -781,10 +823,17 @@ class MapPoolPanel(discord.ui.View):
         button : discord.ui.Button
             The button that was clicked
         """
+        await interaction.response.edit_message(content="Changes applied", view=None)
+
+        async with asqlite.connect("./local_storage/maps.db") as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("BEGIN TRANSACTION")
+                for m in global_utils.map_preferences:
+                    await cursor.execute("UPDATE info SET in_pool = ? WHERE map = ?", (m in self.pool, m))
+            await conn.commit()
+
         global_utils.map_pool = self.pool
-        global_utils.save_pool()
-        await self.disable(interaction)
-        await self.sync(interaction)
+        await self.sync(interaction.guild.id)
 
     @discord.ui.button(custom_id="clear_map_pool", label="Clear", row=1,
                        style=discord.ButtonStyle.danger, emoji="🗑️")
