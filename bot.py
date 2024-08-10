@@ -5,7 +5,7 @@ import sys
 import asyncio
 from os import getenv
 
-from discord import Interaction, Intents, app_commands, Message, Embed
+from discord import Interaction, Intents, app_commands, Message, Embed, DeletedReferencedMessage
 from discord.ext import commands
 from discord.ext.commands import Context
 
@@ -137,6 +137,15 @@ async def send_emojified(message: Message, emoji_dict: dict) -> None:
     embed = (Embed(description=description, color=message.author.color)
              .set_author(name=author["name"], icon_url=author["icon_url"])
              .set_image(url=image_url))
+
+    if message.reference:
+        global_utils.debug_log("Replying to")
+        # embed.set_footer(text=f"Replying to {message.reference.author.display_name}")
+        target = message.reference.resolved
+        if not isinstance(target, DeletedReferencedMessage):
+            await target.reply(embed=embed)
+            return
+
 
     await message.channel.send(embed=embed)
 
