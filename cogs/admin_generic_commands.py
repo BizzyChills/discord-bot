@@ -1,8 +1,5 @@
 """[cog] A cog for managing generic commands such as moderation and bot shutdown
 """
-from asyncio import sleep
-from datetime import datetime, timedelta
-
 import discord
 from discord.ext import commands
 from discord.ext.commands import Context
@@ -62,88 +59,89 @@ class AdminGenericCommands(commands.Cog):
         """
         return await global_utils.is_admin(ctx)
 
-    @app_commands.command(name="remind", description=global_utils.commands["remind"]["description"])
-    @app_commands.choices(
-        unit=[
-            app_commands.Choice(name="hours", value="hours"),
-            app_commands.Choice(name="minutes", value="minutes"),
-            app_commands.Choice(name="seconds", value="seconds"),
-        ]
-    )
-    @app_commands.describe(
-        interval="The number of units to wait for the reminder",
-        unit="The unit of time associated with the interval",
-        message="The reminder message to send to the premier role"
-    )
-    async def remind(self, interaction: discord.Interaction,
-                     interval: app_commands.Range[int, 1], unit: str,
-                     *, message: str) -> None:
-        """[app command] Sends a reminder to the premier role (and in the premier channel) after a specified interval
+    # DEPRECATED
+    # @app_commands.command(name="remind", description=global_utils.commands["remind"]["description"])
+    # @app_commands.choices(
+    #     unit=[
+    #         app_commands.Choice(name="hours", value="hours"),
+    #         app_commands.Choice(name="minutes", value="minutes"),
+    #         app_commands.Choice(name="seconds", value="seconds"),
+    #     ]
+    # )
+    # @app_commands.describe(
+    #     interval="The number of units to wait for the reminder",
+    #     unit="The unit of time associated with the interval",
+    #     message="The reminder message to send to the premier role"
+    # )
+    # async def remind(self, interaction: discord.Interaction,
+    #                  interval: app_commands.Range[int, 1], unit: str,
+    #                  *, message: str) -> None:
+    #     """[app command] Sends a reminder to the premier role (and in the premier channel) after a specified interval
 
-        Parameters
-        ----------
-        interaction : discord.Interaction
-            The interaction object that initiated the command
-        interval : int
-            The number of units to wait for the reminder
-        unit : str
-            The unit of time associated with the interval (hours, minutes, seconds)
-        message : str
-            The reminder message to send to the premier role
-        """
-        message = message.strip()
+    #     Parameters
+    #     ----------
+    #     interaction : discord.Interaction
+    #         The interaction object that initiated the command
+    #     interval : int
+    #         The number of units to wait for the reminder
+    #     unit : str
+    #         The unit of time associated with the interval (hours, minutes, seconds)
+    #     message : str
+    #         The reminder message to send to the premier role
+    #     """
+    #     message = message.strip()
 
-        current_time = datetime.now()
+    #     current_time = datetime.now()
 
-        g = interaction.guild
-        if g.id == global_utils.val_server_id:
-            role_name = global_utils.prem_role_name
-            reminder_channel = self.bot.get_channel(
-                global_utils.prem_channel_id)
-        else:
-            role_name = global_utils.debug_role_name
-            reminder_channel = self.bot.get_channel(
-                global_utils.debug_channel_id)
+    #     g = interaction.guild
+    #     if g.id == global_utils.val_server_id:
+    #         role_name = global_utils.prem_role_name
+    #         reminder_channel = self.bot.get_channel(
+    #             global_utils.prem_channel_id)
+    #     else:
+    #         role_name = global_utils.debug_role_name
+    #         reminder_channel = self.bot.get_channel(
+    #             global_utils.debug_channel_id)
 
-        role = discord.utils.get(g.roles, name=role_name)
+    #     role = discord.utils.get(g.roles, name=role_name)
 
-        message = f"(reminder) {role.mention} {message}"
-        output = ""
+    #     message = f"(reminder) {role.mention} {message}"
+    #     output = ""
 
-        if unit == "seconds":
-            when = current_time + timedelta(seconds=interval)
-            output = f'(reminder) I will remind {role} in {interval} second(s) with the message: "{message}"'
-        elif unit == "minutes":
-            interval *= 60
-            when = current_time + timedelta(minutes=interval)
-            output = f'(reminder) I will remind {role} in {interval} minute(s) with the message: "{message}"'
-        elif unit == "hours":
-            interval *= 3600
-            when = current_time + timedelta(hours=interval)
-            output = f'(reminder) I will remind {role} in {interval} hour(s) with the message: "{message}"'
+    #     if unit == "seconds":
+    #         when = current_time + timedelta(seconds=interval)
+    #         output = f'(reminder) I will remind {role} in {interval} second(s) with the message: "{message}"'
+    #     elif unit == "minutes":
+    #         interval *= 60
+    #         when = current_time + timedelta(minutes=interval)
+    #         output = f'(reminder) I will remind {role} in {interval} minute(s) with the message: "{message}"'
+    #     elif unit == "hours":
+    #         interval *= 3600
+    #         when = current_time + timedelta(hours=interval)
+    #         output = f'(reminder) I will remind {role} in {interval} hour(s) with the message: "{message}"'
 
-        await interaction.response.send_message(output, ephemeral=True)
+    #     await interaction.response.send_message(output, ephemeral=True)
 
-        dt_when = datetime.fromtimestamp(when.timestamp()).isoformat()
+    #     dt_when = datetime.fromtimestamp(when.timestamp()).isoformat()
 
-        try:
-            global_utils.reminders[dt_when].append((g.id, message))
-        except KeyError:
-            global_utils.reminders[dt_when] = [(g.id, message)]
+    #     try:
+    #         global_utils.reminders[dt_when].append((g.id, message))
+    #     except KeyError:
+    #         global_utils.reminders[dt_when] = [(g.id, message)]
 
-        global_utils.save_reminders()
+    #     global_utils.save_reminders()
 
-        global_utils.log(
-            f"Saved a reminder from {interaction.user.display_name}: {output}")
+    #     global_utils.log(
+    #         f"Saved a reminder from {interaction.user.display_name}: {output}")
 
-        await sleep(interval)
+    #     await sleep(interval)
 
-        await reminder_channel.send(message)
-        global_utils.log(
-            f"Posted a reminder from {interaction.user.display_name} for {role.name}: {message}")
+    #     await reminder_channel.send(message)
+    #     global_utils.log(
+    #         f"Posted a reminder from {interaction.user.display_name} for {role.name}: {message}")
 
-        global_utils.reminders[dt_when].remove((g.id, message))
-        global_utils.save_reminders()
+    #     global_utils.reminders[dt_when].remove((g.id, message))
+    #     global_utils.save_reminders()
 
     @app_commands.command(name="pin", description=global_utils.commands["pin"]["description"])
     @app_commands.describe(

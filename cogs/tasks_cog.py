@@ -2,8 +2,6 @@
 (like sending reminders for upcoming events, clearing old reminders, etc.)
 """
 import sys
-from copy import deepcopy
-from asyncio import sleep
 from datetime import datetime, time, timedelta
 import asyncpg
 import pytz
@@ -33,7 +31,7 @@ class TasksCog(commands.Cog):
 
         self.tasks = [self.eventreminders,
                       self.clear_old_reminders,
-                      self.remember_reminders,
+                      #   self.remember_reminders,
                       self.latest_logs]
 
     @commands.Cog.listener()
@@ -247,38 +245,39 @@ class TasksCog(commands.Cog):
             global_utils.log(
                 f"Deleted {len(messages)} old reminder messages from {channel.name}")
 
-    @tasks.loop(count=1)
-    async def remember_reminders(self) -> None:
-        """[task] Remembers reminder timers (made via /remind) in case the bot goes offline
-        """
-        reminder_iter = deepcopy(global_utils.reminders)
-        sorted_keys = sorted(reminder_iter.keys())
-        reminder_iter = {k: reminder_iter[k] for k in sorted_keys}
+    # DEPRECATED
+    # @tasks.loop(count=1)
+    # async def remember_reminders(self) -> None:
+    #     """[task] Remembers reminder timers (made via /remind) in case the bot goes offline
+    #     """
+    #     reminder_iter = deepcopy(global_utils.reminders)
+    #     sorted_keys = sorted(reminder_iter.keys())
+    #     reminder_iter = {k: reminder_iter[k] for k in sorted_keys}
 
-        for time_str, reminders in reminder_iter.items():
-            reminder_time = datetime.fromisoformat(time_str)
-            for reminder_info in reminders:
-                server_id = reminder_info[0]
-                reminder_message = reminder_info[1]
+    #     for time_str, reminders in reminder_iter.items():
+    #         reminder_time = datetime.fromisoformat(time_str)
+    #         for reminder_info in reminders:
+    #             server_id = reminder_info[0]
+    #             reminder_message = reminder_info[1]
 
-                channel = (
-                    self.bot.get_channel(global_utils.prem_channel_id)
-                    if server_id == global_utils.val_server_id
-                    else self.bot.get_channel(global_utils.debug_channel_id))
+    #             channel = (
+    #                 self.bot.get_channel(global_utils.prem_channel_id)
+    #                 if server_id == global_utils.val_server_id
+    #                 else self.bot.get_channel(global_utils.debug_channel_id))
 
-                if reminder_time < datetime.now():
-                    await channel.send(reminder_message + "\n(this reminder was supposed to go off at " +
-                                       global_utils.discord_local_time(reminder_time) + ".")
-                    global_utils.log(
-                        "Bot missed a reminder during its downtime, but sent it now. Message: " + reminder_message)
-                else:
-                    await sleep((reminder_time - datetime.now()).total_seconds())
-                    await channel.send(reminder_message)
-                    global_utils.log("Posted reminder: " + reminder_message)
+    #             if reminder_time < datetime.now():
+    #                 await channel.send(reminder_message + "\n(this reminder was supposed to go off at " +
+    #                                    global_utils.discord_local_time(reminder_time) + ".")
+    #                 global_utils.log(
+    #                     "Bot missed a reminder during its downtime, but sent it now. Message: " + reminder_message)
+    #             else:
+    #                 await sleep((reminder_time - datetime.now()).total_seconds())
+    #                 await channel.send(reminder_message)
+    #                 global_utils.log("Posted reminder: " + reminder_message)
 
-                global_utils.reminders[time_str] = [r for r in reminders if r != reminder_info]
+    #             global_utils.reminders[time_str] = [r for r in reminders if r != reminder_info]
 
-                global_utils.save_reminders()
+    #             global_utils.save_reminders()
 
     # wait until a few seconds after midnight to start new log in case of some delay/desync issue
     @tasks.loop(time=global_utils.est_to_utc(time(hour=0, minute=0, second=5)))
